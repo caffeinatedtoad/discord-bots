@@ -1,0 +1,10 @@
+FROM ubuntu:latest
+
+RUN apt-get -y update
+RUN apt install -y wget
+
+RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz
+RUN tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz
+
+RUN apt-get install -y ffmpeg
+RUN apt-get install -y build-essential
