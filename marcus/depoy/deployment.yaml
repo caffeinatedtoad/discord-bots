@@ -1,0 +1,87 @@
+# Theoretically this can be deployed into k8s (k3s _should_ work with proper network setup (wss support))
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: marcus-secrets
+type: Opaque
+data:
+  discord-bot-token: <base64-encoded-token>
+  magic-key: <base64-encoded-key>
+  open-router-key: <base64-encoded-key>
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: marcus-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/marcus-audio"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: marcus-pvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marcus
+  labels:
+    app: marcus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: marcus
+  template:
+    metadata:
+      labels:
+        app: marcus
+    spec:
+      hostNetwork: true
+      containers:
+        - name: marcus
+          image: marcus:latest
+          imagePullPolicy: "Always"
+          env:
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: marcus-secrets
+                  key: discord-bot-token
+            - name: magic_key
+              valueFrom:
+                secretKeyRef:
+                  name: marcus-secrets
+                  key: magic-key
+            - name: AUDIO_DIR
+              value: "/app/audio"
+            - name: OPEN_ROUTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: marcus-secrets
+                  key: open-router-key
+          volumeMounts:
+            - name: audio-volume
+              mountPath: "/app/audio"
+      volumes:
+        - name: audio-volume
+          persistentVolumeClaim:
+            claimName: marcus-pvc
+

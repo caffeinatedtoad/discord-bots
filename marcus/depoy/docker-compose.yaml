@@ -1,0 +1,31 @@
+services:
+  marcus:
+    image: marcus:logs
+    container_name: marcus
+    restart: always
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - magic_key=${MAGIC_KEY}
+      - AUDIO_DIR=/audio/audio
+      - OPEN_ROUTER_KEY=${OPEN_ROUTER_KEY}
+    volumes:
+      - ./audio:/audio/audio
+    networks:
+      - marcus-network
+
+  registry:
+    image: registry:2
+    ports:
+      - "5000:5000"
+    volumes:
+      - /mnt/docker:/data
+    environment:
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/data
+      - REGISTRY_AUTH=false
+    restart: always
+    networks:
+      - marcus-network
+
+networks:
+  marcus-network:
+    driver: bridge

@@ -108,14 +108,9 @@ func (c *Command) Build() *Command {
 		return c
 	}
 
-	if strings.HasPrefix(command, "dracula") {
-		c.action = c.Dracula
-		return c
-	}
-
-	if strings.HasPrefix(command, "mets") {
-		c.action = c.Mets
-		return c
+	meme, ok := Memes.Memes[command]
+	if ok {
+		c.Meme(meme, subcommand)
 	}
 
 	c.ignore = true

@@ -32,7 +32,6 @@ func main() {
 	}
 
 	dg.AddHandler(handleMessage)
-
 	err = dg.Open()
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error opening connection: %v", err))

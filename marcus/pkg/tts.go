@@ -3,6 +3,7 @@ package pkg
 import (
 	"github.com/bwmarrin/dgvoice"
 	"github.com/bwmarrin/discordgo"
+	"time"
 
 	"encoding/base64"
 	"encoding/json"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type TTSOpts struct {
@@ -94,11 +94,7 @@ func speakFileInChannel(s *discordgo.Session, m *discordgo.MessageCreate, fileNa
 	}
 
 	dgvoice.PlayAudioFile(vc, fileName, make(chan bool))
-
-	// this sleep ensures that marcus's audio isn't cut off
-	// by an abrupt disconnect
 	time.Sleep(time.Millisecond * 500)
-
 	err = vc.Disconnect()
 	if err != nil {
 		log.Println(fmt.Sprintf("Failed to disconnect from the vc: %v", err))
