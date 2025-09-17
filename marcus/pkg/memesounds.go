@@ -54,7 +54,7 @@ func GetTopLevelFiles(dirName string) error {
 }
 
 func (m *memeCollection) walkWavFiles(workingDirectory, name string) error {
-	slog.Info(fmt.Sprintf("walking wave files for %s", name))
+	slog.Debug(fmt.Sprintf("walking wave files for %s", name))
 	Memes.Memes[name] = m
 
 	files, err := os.ReadDir(workingDirectory)
@@ -65,7 +65,7 @@ func (m *memeCollection) walkWavFiles(workingDirectory, name string) error {
 
 	for _, info := range files {
 		if info.IsDir() {
-			slog.Info(fmt.Sprintf("processing directory %s", info.Name()))
+			slog.Debug(fmt.Sprintf("processing directory %s", info.Name()))
 			m.child = &memeCollection{
 				Name: name,
 			}
@@ -182,4 +182,24 @@ func (c *Command) Meme(collection *memeCollection, remainder string) {
 	fileName := collection.Files[rand.Intn(len(collection.Files))]
 
 	SpeakFile(c.Session, c.MessageEvent, fileName.Path, c.Opts.ChannelName)
+}
+
+func (c *Command) ListMemes() {
+	Memes.Lock()
+	defer Memes.Unlock()
+
+	var x strings.Builder
+	x.WriteString("```")
+	for k, v := range Memes.Memes {
+		for _, file := range v.Files {
+			if k == "" {
+				x.WriteString(fmt.Sprintf("%s\n", file.Name))
+				continue
+			}
+			x.WriteString(fmt.Sprintf("%s-%s\n", k, file.Name))
+		}
+	}
+	x.WriteString("```")
+
+	SendMessageWithError(c.Session, c.MessageEvent, x.String(), "failed to list memes")
 }

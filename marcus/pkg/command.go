@@ -108,6 +108,15 @@ func (c *Command) Build() *Command {
 		return c
 	}
 
+	if command == "list" {
+		switch subcommand {
+		case "memes":
+			c.action = c.ListMemes
+			c.usableOutsideOfVC = true
+			return c
+		}
+	}
+
 	meme, ok := Memes.Memes[command]
 	if ok {
 		c.Meme(meme, subcommand)
