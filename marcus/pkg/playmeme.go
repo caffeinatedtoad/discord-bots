@@ -12,6 +12,7 @@ import (
 )
 
 var Memes *MemeSet
+var MemeLocation string
 
 type MemeSet struct {
 	sync.Mutex
@@ -53,7 +54,7 @@ func GetTopLevelFiles(dirName string) error {
 	return err
 }
 
-func (m *memeCollection) walkWavFiles(workingDirectory, name string) error {
+func (m *memeCollection) walkWavFiles(toplevel bool, workingDirectory, name string) error {
 	slog.Debug(fmt.Sprintf("walking wave files for %s", name))
 	Memes.Memes[name] = m
 
@@ -71,11 +72,11 @@ func (m *memeCollection) walkWavFiles(workingDirectory, name string) error {
 			}
 
 			newName := workingDirectory + "-" + strings.TrimSuffix(info.Name(), ".wav")
-			if workingDirectory == "memes" {
+			if toplevel {
 				newName = strings.TrimSuffix(info.Name(), ".wav")
 			}
 
-			err = m.child.walkWavFiles(workingDirectory+"/"+info.Name(), newName)
+			err = m.child.walkWavFiles(false, workingDirectory+"/"+info.Name(), newName)
 			if err != nil {
 				slog.Error(fmt.Sprintf("couldn't read meme files: %v", err))
 			}
@@ -100,13 +101,17 @@ func init() {
 		Memes: make(map[string]*memeCollection),
 	}
 
-	_, err := os.Stat("memes")
+	MemeLocation = os.Getenv("MEMES_LOCATION")
+	if MemeLocation == "" {
+		MemeLocation = "memes"
+	}
+	_, err := os.Stat(MemeLocation)
 	if err != nil {
-		slog.Warn("memes directory not found: %v, meme commands disabled", err)
+		slog.Warn(fmt.Sprintf("memes directory not found: %v, meme commands disabled", err))
 		return
 	}
 
-	if err = GetTopLevelFiles("memes"); err != nil {
+	if err = GetTopLevelFiles(MemeLocation); err != nil {
 		slog.Error("couldn't read meme files: %v", err)
 		return
 	}
@@ -115,7 +120,7 @@ func init() {
 		Name: "",
 	}
 
-	err = memes.walkWavFiles("memes", "")
+	err = memes.walkWavFiles(true, MemeLocation, "")
 	if err != nil {
 		slog.Error(fmt.Sprintf("couldn't read meme files: %v", err))
 	}
@@ -131,7 +136,7 @@ func init() {
 			case <-ticker.C:
 				Memes.Lock()
 				slog.Debug("refreshing memes")
-				if err = GetTopLevelFiles("memes"); err != nil {
+				if err = GetTopLevelFiles(MemeLocation); err != nil {
 					slog.Error("couldn't read meme files: %v", err)
 					return
 				}
@@ -140,7 +145,7 @@ func init() {
 					Name: "",
 				}
 
-				err = memes.walkWavFiles("memes", "memes")
+				err = memes.walkWavFiles(true, MemeLocation, "")
 				if err != nil {
 					slog.Error(fmt.Sprintf("couldn't read meme files: %v", err))
 				}
@@ -151,7 +156,7 @@ func init() {
 	}()
 }
 
-func (c *Command) Meme(collection *memeCollection, remainder string) {
+func (c *Command) Meme(collection *memeCollection) {
 	Memes.Lock()
 	defer Memes.Unlock()
 
@@ -160,10 +165,10 @@ func (c *Command) Meme(collection *memeCollection, remainder string) {
 		return
 	}
 
-	if remainder != "" {
+	if c.SubcommandString != "" {
 		found := false
 		for _, file := range collection.Files {
-			if file.Name == remainder {
+			if file.Name == c.SubcommandString {
 				found = true
 				SpeakFile(c.Session, c.MessageEvent, file.Path, c.Opts.ChannelName)
 				break
@@ -171,7 +176,7 @@ func (c *Command) Meme(collection *memeCollection, remainder string) {
 		}
 
 		if !found {
-			SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("Couldn't find a meme with the name %s", collection.Name+"-"+remainder), "Couldn't find a meme with the name")
+			SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("Couldn't find a meme with the name %s", collection.Name+"-"+c.SubcommandString), "Couldn't find a meme with the name")
 			return
 		}
 

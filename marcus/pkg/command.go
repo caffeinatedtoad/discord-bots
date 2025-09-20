@@ -19,6 +19,9 @@ type Command struct {
 	ignore            bool
 	action            func()
 	usableOutsideOfVC bool
+
+	CommandString    string
+	SubcommandString string
 }
 
 func (c *Command) Build() *Command {
@@ -69,14 +72,15 @@ func (c *Command) Build() *Command {
 		ChannelName: targetChannel,
 	}
 
-	command, subcommand, hasSubCommand := strings.Cut(command, "-")
+	var hasSubCommand bool
+	c.CommandString, c.SubcommandString, hasSubCommand = strings.Cut(command, "-")
 
-	if strings.HasPrefix(command, "marcus") || command == "m" {
+	if strings.HasPrefix(c.CommandString, "marcus") || command == "m" {
 		if !hasSubCommand {
 			c.action = c.SayTTS
 			return c
 		}
-		switch subcommand {
+		switch c.SubcommandString {
 		case "cache":
 			c.action = c.SayCachedFiles
 			c.usableOutsideOfVC = true
@@ -94,22 +98,22 @@ func (c *Command) Build() *Command {
 		return c
 	}
 
-	if strings.HasPrefix(command, "ask") {
-		switch subcommand {
+	if strings.HasPrefix(c.CommandString, "ask") {
+		switch c.SubcommandString {
 		case "marcus":
 			c.action = c.AskMarcusQuestion
 		case "ai":
 			c.action = c.AskAIQuestion
 			c.usableOutsideOfVC = true
 		default:
-			c.err = fmt.Errorf("unknown !ask subcommand: %s", subcommand)
+			c.err = fmt.Errorf("unknown !ask subcommand: %s", c.SubcommandString)
 			return c
 		}
 		return c
 	}
 
-	if command == "list" {
-		switch subcommand {
+	if c.CommandString == "list" {
+		switch c.SubcommandString {
 		case "memes":
 			c.action = c.ListMemes
 			c.usableOutsideOfVC = true
@@ -117,9 +121,14 @@ func (c *Command) Build() *Command {
 		}
 	}
 
+	if c.CommandString == "addmeme" {
+		c.action = c.AddMeme
+		return c
+	}
+
 	meme, ok := Memes.Memes[command]
 	if ok {
-		c.Meme(meme, subcommand)
+		c.Meme(meme)
 	}
 
 	c.ignore = true

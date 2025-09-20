@@ -100,6 +100,8 @@ func GetFunctionName(i interface{}) string {
 	return funcPointer.Name()
 }
 
+// TODO: This is really just handling the case where the message length is too long - need a new function to do proper logging
+
 func SendMessageWithError(s *discordgo.Session, m *discordgo.MessageCreate, content, errorMessage string) {
 	_, err := s.ChannelMessageSend(m.ChannelID, content)
 	if err != nil {
