@@ -55,6 +55,8 @@ func (c *Command) Build() *Command {
 		"targetChannel", targetChannel,
 	)
 
+	c.Logger.Info("processing message")
+
 	defer func() {
 		if c.ignore {
 			return
@@ -123,6 +125,7 @@ func (c *Command) Build() *Command {
 
 	if c.CommandString == "addmeme" {
 		c.action = c.AddMeme
+		c.usableOutsideOfVC = true
 		return c
 	}
 
