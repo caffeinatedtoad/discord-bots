@@ -14,6 +14,16 @@ import (
 	"strings"
 )
 
+func TTSTooLongAdultMessages() []string {
+	return []string{
+		"The requested TTS string was too long :( (must 300 characters or less)",
+		"Your text is so long it made the TTS engine sweat profusely. (must 300 characters or less)",
+		"The TTS engine just committed seppuku rather than process that wall of text. Congratulations. (must 300 characters or less)",
+		"Your massive text dump made the TTS engine physically ill. Hope you're proud of yourself. (must 300 characters or less)",
+		"The TTS system flatlined. The coroner ruled the cause of death as 'death by verbosity'. (must 300 characters or less)",
+	}
+}
+
 func (c *Command) SayCachedFiles() {
 	cached := getCachedFiles()
 

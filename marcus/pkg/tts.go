@@ -3,6 +3,7 @@ package pkg
 import (
 	"github.com/bwmarrin/dgvoice"
 	"github.com/bwmarrin/discordgo"
+	"math/rand"
 	"time"
 
 	"encoding/base64"
@@ -34,7 +35,7 @@ func (c *Command) SayTTS() {
 
 func GetAndSpeak(s *discordgo.Session, m *discordgo.MessageCreate, content, targetChannel string) {
 	if len(content) >= 300 {
-		s.ChannelMessageSend(m.ChannelID, "The requested TTS string was too long :(")
+		s.ChannelMessageSend(m.ChannelID, TTSTooLongAdultMessages()[rand.Intn(len(TTSTooLongAdultMessages()))])
 		return
 	}
 
@@ -183,7 +184,10 @@ func getTTS(input string) (string, error) {
 		return "", nil
 	}
 
-	os.WriteFile(getFileName(input), data, 0644)
+	err = os.WriteFile(getFileName(input), data, 0644)
+	if err != nil {
+		return "", err
+	}
 	log.Println("downloaded tts")
 	return getFileName(input), nil
 }
