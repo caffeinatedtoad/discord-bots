@@ -6,6 +6,7 @@ import (
 	"log"
 	"log/slog"
 	"marcus/pkg"
+	"marcus/pkg/tts"
 	"os"
 )
 
@@ -42,14 +43,20 @@ func main() {
 }
 
 func handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
+	ttsGen, err := tts.NewTTS(logger.With("component", "tts"))
+	if err != nil {
+		logger.Error(fmt.Sprintf("failed to create TTS generator: %v", err))
+		return
+	}
+
 	c := pkg.Command{
 		Session:      s,
 		MessageEvent: m,
 		Logger:       logger,
+		TTS:          ttsGen,
 	}
 
-	err := c.Build().Execute()
-
+	err = c.Build().Execute()
 	if err != nil {
 		_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error executing command: %v", err))
 		if err != nil {

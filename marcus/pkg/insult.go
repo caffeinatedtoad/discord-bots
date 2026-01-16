@@ -39,7 +39,7 @@ func (c *Command) SayInsult() {
 	}
 
 	go c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", rb.Insult))
-	GetAndSpeak(c.Session, c.MessageEvent, rb.Insult, c.Opts.ChannelName)
+	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, rb.Insult, c.TTSOpts.ChannelName)
 }
 
 // getting insults from https://evilinsult.com/generate_insult.php?lang=en&type=json

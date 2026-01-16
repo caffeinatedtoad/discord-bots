@@ -3,6 +3,7 @@ package pkg
 import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/revrost/go-openrouter"
+	"marcus/pkg/util"
 
 	"context"
 	"fmt"
@@ -30,30 +31,36 @@ var (
 )
 
 func (c *Command) AskAIQuestion() {
-	askQuestion(c.Session, c.MessageEvent, false, c.Opts)
+	mOps := modelGeneral
+	mOps.prompt = c.TTSOpts.Content
+
+	response, reasoning := askedQuestion(c.Session, c.MessageEvent, mOps)
+
+	respondToQuestion(c.Session, c.MessageEvent, "The AI Thought: ||```%s```||", response, reasoning)
+
+	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, response, c.TTSOpts.ChannelName)
 }
 
 func (c *Command) AskMarcusQuestion() {
-	askQuestion(c.Session, c.MessageEvent, true, c.Opts)
+	mOps := modelMarcus
+	mOps.prompt = c.TTSOpts.Content
+
+	response, reasoning := askedQuestion(c.Session, c.MessageEvent, mOps)
+
+	respondToQuestion(c.Session, c.MessageEvent, "Marcus Thought: ||```%s```||", response, reasoning)
+
+	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, response, c.TTSOpts.ChannelName)
 }
 
-func askQuestion(s *discordgo.Session, m *discordgo.MessageCreate, isMarcus bool, opts TTSOpts) {
-	var content, response, reasoning string
+func askedQuestion(s *discordgo.Session, m *discordgo.MessageCreate, mOps modelOpts) (string, string) {
+	var response, reasoning string
 	var err error
 
 	msg, err := s.ChannelMessageSend(m.ChannelID, "Thinking...")
 	if err != nil {
 		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to respond to question: %v", err))
-		return
+		return "", ""
 	}
-
-	var mOps modelOpts
-	if isMarcus {
-		mOps = modelMarcus
-	} else {
-		mOps = modelGeneral
-	}
-	mOps.prompt = content
 
 	stopThinking := startThinking(s, m, msg.ID)
 	response, reasoning, err = openRouterRequest(mOps)
@@ -61,13 +68,7 @@ func askQuestion(s *discordgo.Session, m *discordgo.MessageCreate, isMarcus bool
 	stopThinking <- struct{}{}
 	close(stopThinking)
 
-	respondToQuestion(s, m, isMarcus, msg.ID, response, reasoning)
-
-	if !isMarcus {
-		return
-	}
-
-	GetAndSpeak(s, m, response, opts.ChannelName)
+	return response, reasoning
 }
 
 func startThinking(s *discordgo.Session, m *discordgo.MessageCreate, msgId string) chan struct{} {
@@ -101,24 +102,21 @@ func startThinking(s *discordgo.Session, m *discordgo.MessageCreate, msgId strin
 	return stopThinking
 }
 
-func respondToQuestion(s *discordgo.Session, m *discordgo.MessageCreate, isMarcus bool, msgIdToEdit, response, reasoning string) {
+func respondToQuestion(s *discordgo.Session, m *discordgo.MessageCreate, reasoningHeader, response, reasoning string) {
 	if reasoning == "" {
-		EditMessageWithError(s, m, msgIdToEdit, response, "failed to respond to question")
+		util.EditMessageWithError(s, m, m.ID, response, "failed to respond to question")
 		return
 	}
 
-	fullReasoning := fmt.Sprintf("Marcus Thought: ||```%s```||", reasoning)
-	if !isMarcus {
-		fullReasoning = fmt.Sprintf("The AI Thought: ||```%s```||", reasoning)
-	}
+	fullReasoning := fmt.Sprintf(reasoningHeader, reasoning)
 
 	if len(fullReasoning) >= 2000 {
-		EditMessageWithError(s, m, msgIdToEdit, "We thought so hard we can't even show it in chat...", "failed to provide reasoning")
+		util.EditMessageWithError(s, m, m.ID, "We thought so hard we can't even show it in chat...", "failed to provide reasoning")
 	} else {
-		EditMessageWithError(s, m, msgIdToEdit, fullReasoning, "failed to provide reasoning")
+		util.EditMessageWithError(s, m, m.ID, fullReasoning, "failed to provide reasoning")
 	}
 
-	SendMessageWithError(s, m, response, "failed to respond to question")
+	util.SendMessageWithError(s, m, response, "failed to respond to question")
 }
 
 func openRouterRequest(opts modelOpts) (string, string, error) {
@@ -145,7 +143,7 @@ func openRouterRequest(opts modelOpts) (string, string, error) {
 				Effort: toPtr("medium"),
 			},
 			Messages: msgs,
-			WebSearchOptions: openrouter.WebSearchOptions{
+			WebSearchOptions: &openrouter.WebSearchOptions{
 				SearchContextSize: openrouter.SearchContextSizeHigh,
 			},
 		},

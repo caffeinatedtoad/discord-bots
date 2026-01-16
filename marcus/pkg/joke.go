@@ -37,7 +37,7 @@ func (c *Command) SayJoke() {
 
 	joke := fmt.Sprintf("%s %s", intro, strings.ReplaceAll(j.Joke, "\n", " "))
 	go c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", joke))
-	GetAndSpeak(c.Session, c.MessageEvent, joke, c.Opts.ChannelName)
+	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, joke, c.TTSOpts.ChannelName)
 }
 
 type Joke struct {

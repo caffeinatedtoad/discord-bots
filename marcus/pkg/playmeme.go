@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"marcus/pkg/util"
 	"math/rand"
 	"os"
 	"strings"
@@ -161,7 +162,7 @@ func (c *Command) Meme(collection *memeCollection) {
 	defer Memes.Unlock()
 
 	if len(collection.Files) == 1 {
-		SpeakFile(c.Session, c.MessageEvent, collection.Files[0].Path, c.Opts.ChannelName)
+		c.TTS.SpeakFile(c.Session, c.MessageEvent, collection.Files[0].Path, c.TTSOpts.ChannelName)
 		return
 	}
 
@@ -170,13 +171,13 @@ func (c *Command) Meme(collection *memeCollection) {
 		for _, file := range collection.Files {
 			if file.Name == c.SubcommandString {
 				found = true
-				SpeakFile(c.Session, c.MessageEvent, file.Path, c.Opts.ChannelName)
+				c.TTS.SpeakFile(c.Session, c.MessageEvent, file.Path, c.TTSOpts.ChannelName)
 				break
 			}
 		}
 
 		if !found {
-			SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("Couldn't find a meme with the name %s", collection.Name+"-"+c.SubcommandString), "Couldn't find a meme with the name")
+			util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("Couldn't find a meme with the name %s", collection.Name+"-"+c.SubcommandString), "Couldn't find a meme with the name")
 			return
 		}
 
@@ -186,7 +187,7 @@ func (c *Command) Meme(collection *memeCollection) {
 	rand.Intn(len(collection.Files))
 	fileName := collection.Files[rand.Intn(len(collection.Files))]
 
-	SpeakFile(c.Session, c.MessageEvent, fileName.Path, c.Opts.ChannelName)
+	c.TTS.SpeakFile(c.Session, c.MessageEvent, fileName.Path, c.TTSOpts.ChannelName)
 }
 
 func (c *Command) ListMemes() {
@@ -206,5 +207,5 @@ func (c *Command) ListMemes() {
 	}
 	x.WriteString("```")
 
-	SendMessageWithError(c.Session, c.MessageEvent, x.String(), "failed to list memes")
+	util.SendMessageWithError(c.Session, c.MessageEvent, x.String(), "failed to list memes")
 }

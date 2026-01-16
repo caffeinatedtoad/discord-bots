@@ -30,7 +30,7 @@ func (c *Command) SayFact() {
 	}
 
 	go c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", fact.Text))
-	GetAndSpeak(c.Session, c.MessageEvent, fact.Text, c.Opts.ChannelName)
+	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, fact.Text, c.TTSOpts.ChannelName)
 }
 
 // getting free facts from https://uselessfacts.jsph.pl/api/v2/facts/random

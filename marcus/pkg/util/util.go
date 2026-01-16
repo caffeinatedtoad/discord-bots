@@ -1,11 +1,10 @@
-package pkg
+package util
 
 import (
 	"github.com/bwmarrin/discordgo"
 
 	"fmt"
 	"io/fs"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -14,54 +13,7 @@ import (
 	"strings"
 )
 
-func TTSTooLongAdultMessages() []string {
-	return []string{
-		"The requested TTS string was too long :( (must 300 characters or less)",
-		"Your text is so long it made the TTS engine sweat profusely. (must 300 characters or less)",
-		"The TTS engine just committed seppuku rather than process that wall of text. Congratulations. (must 300 characters or less)",
-		"Your massive text dump made the TTS engine physically ill. Hope you're proud of yourself. (must 300 characters or less)",
-		"The TTS system flatlined. The coroner ruled the cause of death as 'death by verbosity'. (must 300 characters or less)",
-	}
-}
-
-func (c *Command) SayCachedFiles() {
-	cached := getCachedFiles()
-
-	b := strings.Builder{}
-	var parts []string
-	b.WriteString("```\n")
-	for _, file := range cached {
-		b.WriteString(fmt.Sprintf("%s\n", file))
-		if len(b.String()) >= 200 {
-			// write b and continue to build the next page
-			b.WriteString("```\n")
-			parts = append(parts, b.String())
-			b.Reset()
-			b.WriteString("```\n")
-		}
-	}
-	b.WriteString("```\n")
-
-	parts = append(parts, b.String())
-	if len(parts) == 1 {
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, b.String())
-		if err != nil {
-			log.Println(fmt.Sprintf("ERR: %v", err))
-		}
-		return
-	}
-
-	for i, part := range parts {
-		part = fmt.Sprintf("Page %d\n%s", i, part)
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, part)
-		if err != nil {
-			log.Println(fmt.Sprintf("ERR: %v", err))
-			return
-		}
-	}
-}
-
-func getCachedFiles() []string {
+func GetCachedFiles() []string {
 	var phrases []string
 	dir := "."
 	if os.Getenv("AUDIO_DIR") != "" {
