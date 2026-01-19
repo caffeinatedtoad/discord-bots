@@ -4,6 +4,7 @@ import (
 	"github.com/bwmarrin/dgvoice"
 	"github.com/bwmarrin/discordgo"
 	"marcus/pkg/util"
+	"math/rand"
 
 	"fmt"
 	"log/slog"
@@ -81,6 +82,25 @@ func NewTTS(logger *slog.Logger) (*TTS, error) {
 	return tts, nil
 }
 
+func (t *TTS) InputIsCached(input string) (string, bool) {
+	voice := strings.TrimSpace(t.Voice)
+	if voice == "" {
+		voice = DefaultVoice
+	}
+
+	// Try to determine provider from the voice
+	generator, err := t.GetGeneratorForVoice(voice)
+	if err != nil {
+		// Fallback to legacy check if no generator found
+		fileName := getFileName(input, voice)
+		return fileName, fileIsCached(fileName)
+	}
+
+	provider := getProviderFromGeneratorName(generator.Name())
+	fileName := getFileNameWithFallback(provider, voice, input, t.Logger)
+	return fileName, fileIsCached(fileName)
+}
+
 func (t *TTS) ListSupportedVoiceNames() []string {
 	var names []string
 	for _, gen := range t.Generators {
@@ -105,10 +125,10 @@ func (t *TTS) GetGeneratorForVoice(voice string) (Generator, error) {
 }
 
 func (t *TTS) GenerateAndPlay(s *discordgo.Session, m *discordgo.MessageCreate, content, targetChannel string) {
-	//if len(content) >= 300 {
-	//	s.ChannelMessageSend(m.ChannelID, TTSTooLongMessages[rand.Intn(len(TTSTooLongMessages))])
-	//	return
-	//}
+	if len(content) >= 1000 {
+		s.ChannelMessageSend(m.ChannelID, TTSTooLongMessages[rand.Intn(len(TTSTooLongMessages))])
+		return
+	}
 
 	var channelID string
 	var err error
@@ -121,21 +141,25 @@ func (t *TTS) GenerateAndPlay(s *discordgo.Session, m *discordgo.MessageCreate, 
 		}
 	}
 
-	voice := strings.TrimSpace(t.Voice)
+	voice := strings.ToLower(strings.TrimSpace(t.Voice))
 	if voice == "" {
 		voice = DefaultVoice
 	}
 
-	fileName := getFileName(content, voice)
-	if !fileIsCached(fileName) {
-		t.Logger.Info("TTS not cached, generating", "file", fileName, "voice", voice)
-		generator, err := t.GetGeneratorForVoice(voice)
-		if err != nil {
-			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to find TTS generator for voice '%s': %v", voice, err))
-			t.Logger.Error("failed to find TTS generator", "voice", voice, "err", err)
-			return
-		}
+	// Get generator for the voice
+	generator, err := t.GetGeneratorForVoice(voice)
+	if err != nil {
+		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to find TTS generator for voice '%s': %v", voice, err))
+		t.Logger.Error("failed to find TTS generator", "voice", voice, "err", err)
+		return
+	}
 
+	// Determine provider and check cache with fallback
+	provider := getProviderFromGeneratorName(generator.Name())
+	fileName := getFileNameWithFallback(provider, voice, content, t.Logger)
+
+	if !fileIsCached(fileName) {
+		t.Logger.Info("TTS not cached, generating", "file", fileName, "voice", voice, "provider", provider)
 		fileName, err = generator.GenerateTTS(content, voice)
 		if err != nil {
 			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to generate TTS: %v\n Type !marcus-cache to see all cached files that can be played at any time.", err))
@@ -143,7 +167,7 @@ func (t *TTS) GenerateAndPlay(s *discordgo.Session, m *discordgo.MessageCreate, 
 			return
 		}
 	} else {
-		t.Logger.Info("using cached TTS", "file", fileName, "voice", voice)
+		t.Logger.Info("using cached TTS", "file", fileName, "voice", voice, "provider", provider)
 	}
 
 	if channelID != "" {

@@ -80,7 +80,7 @@ func EditMessageWithError(s *discordgo.Session, m *discordgo.MessageCreate, msgI
 	}
 }
 
-func messageInChannel(s *discordgo.Session, m *discordgo.MessageCreate, channelName string) bool {
+func MessageInChannel(s *discordgo.Session, m *discordgo.MessageCreate, channelName string) bool {
 	guild, err := s.Guild(m.GuildID)
 	if err != nil {
 		return true

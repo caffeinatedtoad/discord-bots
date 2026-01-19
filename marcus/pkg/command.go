@@ -14,6 +14,8 @@ type Command struct {
 	Logger *slog.Logger
 
 	*tts.TTS
+	*MemeSet
+
 	TTSOpts tts.Opts
 
 	Session      *discordgo.Session
@@ -55,6 +57,8 @@ func (c *Command) Build() *Command {
 		return c
 	}
 
+	// TODO: This needs to be rethought, since the
+	//		 cache might be really big
 	//if cmd == "list-cache" {
 	//	c.action = c.SayCachedFiles
 	//	c.usableOutsideOfVC = true
@@ -97,12 +101,11 @@ func (c *Command) Build() *Command {
 			c.action = c.SayJoke
 			return c
 
-		// RIP legend
-		// TODO: allow playing any cached slurs,
-		// 		 but don't generate any more
-		//case "slur":
-		//	c.action = c.SaySlur
-		//	return c
+		// allow saying cached slurs,
+		// but don't generate any more
+		case "slur":
+			c.action = c.SaySlur
+			return c
 
 		default:
 			// Unknown subcommand, treat as plain TTS if content provided
@@ -137,7 +140,10 @@ func (c *Command) Build() *Command {
 	if c.CommandString == "list" {
 		switch c.SubcommandString {
 		case "memes":
-			c.action = c.ListMemes
+			c.action = func() {
+				memes := c.MemeSet.ListMemes()
+				util.SendMessageWithError(c.Session, c.MessageEvent, memes, "failed list memes")
+			}
 			c.usableOutsideOfVC = true
 			return c
 		}
@@ -149,9 +155,15 @@ func (c *Command) Build() *Command {
 		return c
 	}
 
-	meme, ok := Memes.Memes[cmd]
-	if ok {
-		c.Meme(meme)
+	meme, found := c.MemeSet.GetMeme(cmd)
+	if found {
+		c.Logger.Info("found meme for ", cmd, "")
+		c.action = func() {
+			c.TTS.SpeakFile(c.Session, c.MessageEvent, meme, channel)
+		}
+		return c
+	} else {
+		c.Logger.Info("didn't find a meme for ", cmd)
 	}
 
 	c.ignore = true

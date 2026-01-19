@@ -8,6 +8,8 @@ import (
 	"marcus/pkg"
 	"marcus/pkg/tts"
 	"os"
+	"sync"
+	"time"
 )
 
 var logger *slog.Logger
@@ -32,7 +34,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	dg.AddHandler(handleMessage)
+	marcus := Marcus{
+		Memes: &pkg.MemeSet{
+			Map: &sync.Map{},
+		},
+	}
+	go func() {
+		err = marcus.Memes.BuildMemeSet()
+		if err != nil {
+			logger.Error(fmt.Sprintf("failed to build meme set: %v", err))
+		}
+		logger.Info("built initial meme set, starting periodic refresh")
+		marcus.Memes.Map.Range(func(key, value any) bool {
+			fmt.Printf("%s => %s\n", key, value)
+			return true
+		})
+		for {
+			select {
+			case <-time.Tick(time.Second * 10):
+				logger.Debug("refreshing meme set")
+				err = marcus.Memes.BuildMemeSet()
+				if err != nil {
+					logger.Error(fmt.Sprintf("failed to build meme set: %v", err))
+				}
+			}
+		}
+	}()
+
+	dg.AddHandler(marcus.handleMessage)
 	err = dg.Open()
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error opening connection: %v", err))
@@ -42,7 +71,11 @@ func main() {
 	select {}
 }
 
-func handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
+type Marcus struct {
+	Memes *pkg.MemeSet
+}
+
+func (a *Marcus) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	ttsGen, err := tts.NewTTS(logger.With("component", "tts"))
 	if err != nil {
 		logger.Error(fmt.Sprintf("failed to create TTS generator: %v", err))
@@ -54,6 +87,7 @@ func handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 		MessageEvent: m,
 		Logger:       logger,
 		TTS:          ttsGen,
+		MemeSet:      a.Memes,
 	}
 
 	err = c.Build().Execute()

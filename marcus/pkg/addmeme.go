@@ -11,7 +11,8 @@ import (
 
 const addMemeUsage = "```\nUsage: !addmeme <command-name> - creates a command that plays an audio file\n\n" +
 	"This command can only be used as a reply to a message which contains a single wav file attachment. " +
-	"The attachment file name must end in .wav, and the command cannot include spaces or eomji's.```"
+	"The attachment file name must end in .wav, and the command cannot include spaces or eomji's.\n\n" +
+	"Example: !addmeme test - creates a command that plays the audio file attached to the message with the command name '!test'\n```"
 
 func (c *Command) AddMeme() {
 	if c.MessageEvent.ReferencedMessage == nil {
@@ -55,6 +56,11 @@ func (c *Command) AddMeme() {
 	if err != nil {
 		util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("failed to download referenced audio file, encountered error reading response body: %v", err), "failed to send usage for add-meme")
 		return
+	}
+
+	MemeLocation := os.Getenv("MEMES_LOCATION")
+	if MemeLocation == "" {
+		MemeLocation = "memes"
 	}
 
 	file, err := os.OpenFile(fmt.Sprintf("%s/%s.wav", MemeLocation, c.TTSOpts.Content), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

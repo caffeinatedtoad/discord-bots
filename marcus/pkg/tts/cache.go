@@ -15,11 +15,12 @@ func (c CacheTTSGenerator) Name() string {
 }
 
 func (c CacheTTSGenerator) GenerateTTS(input, voice string) (string, error) {
-	fileName := getFileName(input, voice)
-	legacy := legacyFileName(input)
+	// Use new cache lookup with fallback to legacy
+	provider := "marcus"
+	fileName := getFileNameWithFallback(provider, voice, input, c.Logger)
 
-	if !fileIsCached(fileName) && !fileIsCached(legacy) {
-		return "", fmt.Errorf("cached file not found: %s %s", fileName, legacy)
+	if !fileIsCached(fileName) {
+		return "", fmt.Errorf("cached file not found for voice '%s'", voice)
 	}
 
 	c.Logger.Info("found cached TTS file", "file", fileName, "voice", voice)

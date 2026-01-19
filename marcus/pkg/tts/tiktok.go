@@ -75,13 +75,32 @@ func (t TikTokTTSGenerator) GenerateTTS(input, voice string) (string, error) {
 		return "", err
 	}
 
-	out := getFileName(input, voice)
+	// Use new cache structure - tiktok maps to marcus provider
+	provider := "marcus"
+	hash := generateHash(input)
+	out := getCachePath(provider, voice, input)
+
+	// Ensure directory exists
+	if err := ensureCacheDirectory(provider, voice); err != nil {
+		t.Logger.Error("failed to create cache directory", "err", err)
+		return "", err
+	}
+
+	// Write audio file
 	err = os.WriteFile(out, data, 0644)
 	if err != nil {
 		t.Logger.Error("failed writing TTS file", "file", out, "err", err)
 		return "", err
 	}
-	t.Logger.Info("downloaded TTS file", "file", out, "bytes", len(data))
+
+	t.Logger.Info("downloaded TTS file", "file", out, "bytes", len(data), "hash", hash)
+
+	// Update metadata
+	if err := updateMetadata(provider, voice, hash, input, int64(len(data)), t.Logger); err != nil {
+		t.Logger.Warn("failed to update metadata", "err", err)
+		// Don't fail the whole operation if metadata update fails
+	}
+
 	return out, nil
 }
 
