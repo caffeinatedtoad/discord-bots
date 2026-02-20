@@ -2,12 +2,14 @@ package pkg
 
 import (
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 type MemeSet struct {
@@ -17,6 +19,30 @@ type MemeSet struct {
 type MemeHit struct {
 	IsDir bool
 	Path  string
+}
+
+func (m *MemeSet) MonitorMemes(logger *slog.Logger) {
+	go func() {
+		err := m.BuildMemeSet()
+		if err != nil {
+			logger.Error(fmt.Sprintf("failed to build meme set: %v", err))
+		}
+		logger.Info("built initial meme set, starting periodic refresh")
+		m.Map.Range(func(key, value any) bool {
+			fmt.Printf("%s => %s\n", key, value)
+			return true
+		})
+		for {
+			select {
+			case <-time.Tick(time.Second * 10):
+				logger.Debug("refreshing meme set")
+				err = m.BuildMemeSet()
+				if err != nil {
+					logger.Error(fmt.Sprintf("failed to build meme set: %v", err))
+				}
+			}
+		}
+	}()
 }
 
 func (m *MemeSet) BuildMemeSet() error {

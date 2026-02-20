@@ -2,20 +2,28 @@ package main
 
 import (
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"log"
 	"log/slog"
 	"marcus/pkg"
 	"marcus/pkg/tts"
 	"os"
 	"sync"
-	"time"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 var logger *slog.Logger
 
 func main() {
-	logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	level := slog.LevelInfo
+	if os.Getenv("DEBUG") != "" {
+		level = slog.LevelDebug
+	}
+
+	logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	}))
 
 	botToken := os.Getenv("DISCORD_BOT_TOKEN")
 	if botToken == "" {
@@ -34,32 +42,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	marcus := Marcus{
-		Memes: &pkg.MemeSet{
-			Map: &sync.Map{},
-		},
-	}
-	go func() {
-		err = marcus.Memes.BuildMemeSet()
-		if err != nil {
-			logger.Error(fmt.Sprintf("failed to build meme set: %v", err))
-		}
-		logger.Info("built initial meme set, starting periodic refresh")
-		marcus.Memes.Map.Range(func(key, value any) bool {
-			fmt.Printf("%s => %s\n", key, value)
-			return true
-		})
-		for {
-			select {
-			case <-time.Tick(time.Second * 10):
-				logger.Debug("refreshing meme set")
-				err = marcus.Memes.BuildMemeSet()
-				if err != nil {
-					logger.Error(fmt.Sprintf("failed to build meme set: %v", err))
-				}
-			}
-		}
-	}()
+	marcus := NewMarcus()
 
 	dg.AddHandler(marcus.handleMessage)
 	err = dg.Open()
@@ -75,6 +58,16 @@ type Marcus struct {
 	Memes *pkg.MemeSet
 }
 
+func NewMarcus() *Marcus {
+	m := &Marcus{
+		Memes: &pkg.MemeSet{
+			Map: &sync.Map{},
+		},
+	}
+	m.Memes.MonitorMemes(logger)
+	return m
+}
+
 func (a *Marcus) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	ttsGen, err := tts.NewTTS(logger.With("component", "tts"))
 	if err != nil {
@@ -85,7 +78,7 @@ func (a *Marcus) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate)
 	c := pkg.Command{
 		Session:      s,
 		MessageEvent: m,
-		Logger:       logger,
+		Logger:       logger.With("ID", m.ID, "author", m.Author.Username, "channel", m.ChannelID),
 		TTS:          ttsGen,
 		MemeSet:      a.Memes,
 	}

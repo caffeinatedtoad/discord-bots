@@ -1,10 +1,11 @@
 package tts
 
 import (
-	"github.com/bwmarrin/dgvoice"
-	"github.com/bwmarrin/discordgo"
 	"marcus/pkg/util"
 	"math/rand"
+
+	"github.com/bwmarrin/dgvoice"
+	"github.com/bwmarrin/discordgo"
 
 	"fmt"
 	"log/slog"
@@ -37,14 +38,10 @@ type Generator interface {
 
 const (
 	DefaultVoice = "marcus"
-
-	// MarcusDefaultVoice is the default voice when using the !marcus family of commands
-	// It may differ from DefaultVoice; keep equal by default and adjust as desired.
-	MarcusDefaultVoice = DefaultVoice
 )
 
 var (
-	TTSTooLongMessages = []string{
+	TooLongMessages = []string{
 		"The requested TTS string was too long :( (must 300 characters or less)",
 		"Your text is so long it made the TTS engine sweat profusely. (must 300 characters or less)",
 		"The TTS engine just committed seppuku rather than process that wall of text. Congratulations. (must 300 characters or less)",
@@ -126,7 +123,7 @@ func (t *TTS) GetGeneratorForVoice(voice string) (Generator, error) {
 
 func (t *TTS) GenerateAndPlay(s *discordgo.Session, m *discordgo.MessageCreate, content, targetChannel string) {
 	if len(content) >= 1000 {
-		s.ChannelMessageSend(m.ChannelID, TTSTooLongMessages[rand.Intn(len(TTSTooLongMessages))])
+		s.ChannelMessageSend(m.ChannelID, TooLongMessages[rand.Intn(len(TooLongMessages))])
 		return
 	}
 
