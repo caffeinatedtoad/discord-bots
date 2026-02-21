@@ -1,23 +1,13 @@
 apiVersion: v1
-kind: PersistentVolume
+kind: PersistentVolumeClaim
 metadata:
   name: marcus-data
-  labels:
-    type: local
+  namespace: default
 spec:
-  capacity:
-    storage: 100Gi
   accessModes:
     - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
+  resources:
+    requests:
+      storage: 100Gi
   storageClassName: local-path
-  local:
-    path: /marcus
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - {{ .Values.pvc_scheduling.node_name }}
+  volumeName: marcus-data
