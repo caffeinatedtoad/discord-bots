@@ -1,5 +1,5 @@
 ARG BASE_IMAGE_TAG=marcus-base-latest
-FROM ghcr.io/caffeinatedtoad/discord-bots:${BASE_IMAGE_TAG} as build
+FROM ghcr.io/caffeinatedtoad/discord-bots:${BASE_IMAGE_TAG} AS build
 
 LABEL org.opencontainers.image.source=https://github.com/caffeinatedtoad/discord-bots
 LABEL org.opencontainers.image.description="Marcus"
@@ -8,11 +8,12 @@ WORKDIR /audio
 
 COPY .. .
 ENV CGO_ENABLED=1
+ENV PATH="/usr/local/go/bin:${PATH}"
 
-RUN /usr/local/go/bin/go mod download
+RUN go mod download
 
-FROM build as fin
+FROM build AS fin
 
-RUN /usr/local/go/bin/go build -o /marcus
+RUN go build -o /marcus
 
 CMD ["/marcus"]
