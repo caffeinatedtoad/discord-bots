@@ -1,11 +1,15 @@
-kind: PersistentVolumeClaim
 apiVersion: v1
+kind: PersistentVolume
 metadata:
   name: marcus-audio-store
+  labels:
+    type: local
 spec:
-  storageClassName: local-path
+  capacity:
+    storage: 100Gi
   accessModes:
     - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50G
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  local:
+    path: /marcus/audio
