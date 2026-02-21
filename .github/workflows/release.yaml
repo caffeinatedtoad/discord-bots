@@ -33,7 +33,7 @@ jobs:
       - name: Build and push Docker image (base-amd64)
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: marcus
           file: marcus/package/Dockerfile-base
           push: true
           tags: |
@@ -69,7 +69,7 @@ jobs:
       - name: Build and push Docker image (base-arm64)
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: marcus
           file: marcus/package/Dockerfile-base-arm
           push: true
           tags: |
