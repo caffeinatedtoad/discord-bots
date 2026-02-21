@@ -1,0 +1,19 @@
+image:
+  repository: ghcr.io/caffeinatedtoad/discord-bots
+  pullPolicy: Always
+  tag: marcus-latest-arm
+
+tts:
+  open_router:
+    key: ""
+  eleven_labs:
+    key: ""
+
+marcus:
+  audio_dir: "/audio"
+
+discord:
+  token: ""
+
+misc:
+  magic_key: ""

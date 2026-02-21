@@ -1,4 +1,8 @@
-FROM marcus-base:latest as build
+ARG BASE_IMAGE_TAG=marcus-base-latest
+FROM ghcr.io/caffeinatedtoad/discord-bots:${BASE_IMAGE_TAG} as build
+
+LABEL org.opencontainers.image.source=https://github.com/caffeinatedtoad/discord-bots
+LABEL org.opencontainers.image.description="Marcus"
 
 WORKDIR /audio
 
