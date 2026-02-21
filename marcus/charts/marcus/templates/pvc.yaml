@@ -10,6 +10,6 @@ spec:
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: local-path
+  storageClassName: local-storage
   local:
     path: /marcus/audio
