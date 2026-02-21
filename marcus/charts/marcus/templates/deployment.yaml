@@ -31,10 +31,10 @@ spec:
               value: "{{ .Values.marcus.audio_dir }}"
           volumeMounts:
             - mountPath: "/audio"
-              name: marcus-audio-store
+              name: marcus-data
             - mountPath: "/memes"
-              name: marcus-audio-store
+              name: marcus-data
       volumes:
-        - name: marcus-audio-store
+        - name: marcus-data
           persistentVolumeClaim:
-            claimName: marcus-audio-store
+            claimName: marcus-data

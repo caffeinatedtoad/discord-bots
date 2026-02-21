@@ -17,3 +17,6 @@ discord:
 
 misc:
   magic_key: ""
+
+pvc_scheduling:
+  node_name: ""
