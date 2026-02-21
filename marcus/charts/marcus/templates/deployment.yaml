@@ -8,7 +8,7 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-     app: "{{ .Chart.Name }}"
+      app: "{{ .Chart.Name }}"
   template:
     metadata:
       labels:
@@ -18,3 +18,12 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: "DISCORD_BOT_TOKEN"
+              value: "{{ .Values.discord.token }}"
+            - name: "magic_key"
+              value: "{{ .Values.misc.magic_key }}"
+            - name: "OPEN_ROUTER_KEY"
+              value: "{{ .Values.tts.open_router  }}"
+            - name: "ELEVEN_LABS_API_KEY"
+              value: "{{ .Values.tts.eleven_labs }}"
