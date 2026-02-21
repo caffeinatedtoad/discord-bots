@@ -10,7 +10,7 @@ tts:
     key: ""
 
 marcus:
-  audio_dir: "/marcus/audio"
+  audio_dir: "/audio"
 
 discord:
   token: ""
