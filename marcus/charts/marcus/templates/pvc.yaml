@@ -3,7 +3,7 @@ apiVersion: v1
 metadata:
   name: marcus-audio-store
 spec:
-  storageClassName: openebs-hostpath
+  storageClassName: local-path
   accessModes:
     - ReadWriteOnce
   resources:
