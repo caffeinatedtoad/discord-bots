@@ -20,3 +20,6 @@ misc:
 
 pvc_scheduling:
   node_name: ""
+
+nodeSelector:
+  node-role.kubernetes.io/control-plane: "true"

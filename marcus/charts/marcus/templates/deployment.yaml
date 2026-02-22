@@ -34,6 +34,10 @@ spec:
               name: marcus-data
             - mountPath: "/memes"
               name: marcus-data
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: marcus-data
           persistentVolumeClaim:
