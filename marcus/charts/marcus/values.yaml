@@ -12,6 +12,21 @@ tts:
 marcus:
   audio_dir: "/audio"
 
+resources:
+  requests:
+    cpu: "1000m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "512Mi"
+
+securityContext:
+  capabilities:
+    add:
+      - SYS_NICE
+      - SYS_RESOURCE
+  runAsNonRoot: false
+
 discord:
   token: ""
 
