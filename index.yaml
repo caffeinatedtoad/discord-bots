@@ -3,6 +3,16 @@ entries:
   marcus:
   - apiVersion: v2
     appVersion: 0.0.1
+    created: "2026-02-23T04:51:29.083957981Z"
+    description: A discord bot
+    digest: 16316a8a52c6086c880d258f8ec9cca6b2ed2f3bac5889df83d6ab60c411da88
+    name: marcus
+    type: application
+    urls:
+    - https://github.com/caffeinatedtoad/discord-bots/releases/download/marcus-0.0.14/marcus-0.0.14.tgz
+    version: 0.0.14
+  - apiVersion: v2
+    appVersion: 0.0.1
     created: "2026-02-22T22:09:49.975114014Z"
     description: A discord bot
     digest: 53e92d6ba4ce91abe9879b4b0cd43e573b47108b31eb7ab4a80ac2aaa672a16b
@@ -131,4 +141,4 @@ entries:
     urls:
     - https://github.com/caffeinatedtoad/discord-bots/releases/download/marcus-0.0.1/marcus-0.0.1.tgz
     version: 0.0.1
-generated: "2026-02-22T22:09:49.975197035Z"
+generated: "2026-02-23T04:51:29.084051275Z"
