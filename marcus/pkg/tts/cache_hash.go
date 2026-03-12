@@ -29,13 +29,14 @@ func getCachePath(provider, voice, input string) string {
 	// Generate hash
 	hash := generateHash(input)
 
-	// Build path: audio/{provider}/{voice}/{hash}.wav
+	// The file may or may not actually be a wav file. Ultimately
+	// the extension doesn't really matter when running, it's just added
+	// so the files can be played on Windows
 	return filepath.Join(baseDir, providerDir, voiceDir, hash+".wav")
 }
 
 // getProviderFromGeneratorName maps generator names to provider names for the cache hierarchy
 func getProviderFromGeneratorName(generatorName string) string {
-	// Map tiktok to marcus as per requirement
 	if generatorName == "tiktok" {
 		return "marcus"
 	}

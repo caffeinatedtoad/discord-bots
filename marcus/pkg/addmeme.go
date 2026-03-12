@@ -15,46 +15,46 @@ const addMemeUsage = "```\nUsage: !addmeme <command-name> - creates a command th
 	"Example: !addmeme test - creates a command that plays the audio file attached to the message with the command name '!test'\n```"
 
 func (c *Command) AddMeme() {
-	if c.MessageEvent.ReferencedMessage == nil {
-		util.SendMessageWithError(c.Session, c.MessageEvent, addMemeUsage, "failed to send usage for add-meme")
+	if c.MessageEvent.Message.ReferencedMessage == nil {
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, addMemeUsage, "failed to send usage for add-meme")
 		return
 	}
 
-	if c.MessageEvent.ReferencedMessage.Attachments == nil || len(c.MessageEvent.ReferencedMessage.Attachments) != 1 {
-		util.SendMessageWithError(c.Session, c.MessageEvent, addMemeUsage, "failed to send usage for add-meme")
+	if c.MessageEvent.Message.ReferencedMessage.Attachments == nil || len(c.MessageEvent.Message.ReferencedMessage.Attachments) != 1 {
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, addMemeUsage, "failed to send usage for add-meme")
 		return
 	}
 
-	attachment := c.MessageEvent.ReferencedMessage.Attachments[0]
+	attachment := c.MessageEvent.Message.ReferencedMessage.Attachments[0]
 	if !strings.HasSuffix(attachment.Filename, ".wav") {
-		util.SendMessageWithError(c.Session, c.MessageEvent, addMemeUsage, "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, addMemeUsage, "failed to send usage for add-meme")
 	}
 
 	if strings.Contains(c.TTSOpts.Content, " ") {
-		util.SendMessageWithError(c.Session, c.MessageEvent, addMemeUsage, "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, addMemeUsage, "failed to send usage for add-meme")
 		return
 	}
 
 	req, err := http.NewRequest(http.MethodGet, attachment.URL, nil)
 	if err != nil {
-		util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("failed to download referenced audio file: %v", err), "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to download referenced audio file: %v", err), "failed to send usage for add-meme")
 		return
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("failed to download referenced audio file: %v", err), "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to download referenced audio file: %v", err), "failed to send usage for add-meme")
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("failed to download referenced audio file, received unexpected response code %d", resp.StatusCode), "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to download referenced audio file, received unexpected response code %d", resp.StatusCode), "failed to send usage for add-meme")
 		return
 	}
 
 	fileBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("failed to download referenced audio file, encountered error reading response body: %v", err), "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to download referenced audio file, encountered error reading response body: %v", err), "failed to send usage for add-meme")
 		return
 	}
 
@@ -65,15 +65,15 @@ func (c *Command) AddMeme() {
 
 	file, err := os.OpenFile(fmt.Sprintf("%s/%s.wav", MemeLocation, c.TTSOpts.Content), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("failed to download referenced audio file, encountered error creating file: %v", err), "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to download referenced audio file, encountered error creating file: %v", err), "failed to send usage for add-meme")
 		return
 	}
 
 	_, err = file.Write(fileBytes)
 	if err != nil {
-		util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("failed to download referenced audio file, encountered error writing file: %v", err), "failed to send usage for add-meme")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to download referenced audio file, encountered error writing file: %v", err), "failed to send usage for add-meme")
 		return
 	}
 
-	util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("File downloaded, command '!%s' will be created shortly", c.TTSOpts.Content), "failed to send usage for add-meme")
+	util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("File downloaded, command '!%s' will be created shortly", c.TTSOpts.Content), "failed to send usage for add-meme")
 }

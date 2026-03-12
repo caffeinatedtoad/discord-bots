@@ -1,15 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"marcus/pkg"
 	"marcus/pkg/tts"
 	"os"
 	"sync"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/disgo/gateway"
+	"github.com/disgoorg/disgo/voice"
+	"github.com/disgoorg/godave/golibdave"
 )
 
 var logger *slog.Logger
@@ -36,18 +42,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	dg, err := discordgo.New("Bot " + botToken)
+	m := NewMarcus()
+
+	client, err := disgo.New(botToken,
+		bot.WithGatewayConfigOpts(
+			gateway.WithIntents(
+				gateway.IntentGuildMessages,
+				gateway.IntentGuildVoiceStates,
+				gateway.IntentMessageContent,
+			),
+		),
+		bot.WithEventListenerFunc(m.handleMessage),
+		bot.WithVoiceManagerConfigOpts(
+			voice.WithDaveSessionCreateFunc(golibdave.NewSession),
+		),
+	)
 	if err != nil {
-		slog.Error(fmt.Sprintf("Error creating Discord session: %v", err))
-		os.Exit(1)
+		slog.Error("error while building disgo", slog.Any("err", err))
+		return
 	}
 
-	marcus := NewMarcus()
+	defer client.Close(context.TODO())
 
-	dg.AddHandler(marcus.handleMessage)
-	err = dg.Open()
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Error opening connection: %v", err))
+	m.VoiceManager = client.VoiceManager
+
+	if err = client.OpenGateway(context.TODO()); err != nil {
+		slog.Error("errors while connecting to gateway", slog.Any("err", err))
+		return
 	}
 
 	slog.Info("Bot is now running. Press CTRL-C to exit.")
@@ -55,7 +76,8 @@ func main() {
 }
 
 type Marcus struct {
-	Memes *pkg.MemeSet
+	Memes        *pkg.MemeSet
+	VoiceManager voice.Manager
 }
 
 func NewMarcus() *Marcus {
@@ -68,24 +90,27 @@ func NewMarcus() *Marcus {
 	return m
 }
 
-func (a *Marcus) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
-	ttsGen, err := tts.NewTTS(logger.With("component", "tts"))
+func (a *Marcus) handleMessage(event *events.MessageCreate) {
+	if event.Message.Author.Bot {
+		return
+	}
+
+	ttsGen, err := tts.NewTTS(logger.With("component", "tts"), a.VoiceManager)
 	if err != nil {
 		logger.Error(fmt.Sprintf("failed to create TTS generator: %v", err))
 		return
 	}
 
 	c := pkg.Command{
-		Session:      s,
-		MessageEvent: m,
-		Logger:       logger.With("ID", m.ID, "author", m.Author.Username, "channel", m.ChannelID),
+		MessageEvent: event,
+		Logger:       logger.With("ID", event.Message.ID, "author", event.Message.Author.Username, "channel", event.ChannelID),
 		TTS:          ttsGen,
 		MemeSet:      a.Memes,
 	}
 
 	err = c.Build().Execute()
 	if err != nil {
-		_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error executing command: %v", err))
+		_, err = event.Client().Rest.CreateMessage(event.ChannelID, discord.NewMessageCreate().WithContent(fmt.Sprintf("Error executing command: %v", err)))
 		if err != nil {
 			logger.Error(fmt.Sprintf("failed to send error message: %v", err))
 		}

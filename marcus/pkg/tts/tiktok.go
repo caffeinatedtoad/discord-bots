@@ -20,7 +20,7 @@ func (t TikTokTTSGenerator) Name() string {
 	return "tiktok"
 }
 
-func (t TikTokTTSGenerator) GenerateTTS(input, voice string) (string, error) {
+func (t TikTokTTSGenerator) GenerateTTS(input, voice string) ([]byte, error) {
 	if strings.TrimSpace(voice) == "" {
 		voice = DefaultVoice
 	}
@@ -39,7 +39,7 @@ func (t TikTokTTSGenerator) GenerateTTS(input, voice string) (string, error) {
 	resp, err := t.HTTPClient.Do(req)
 	if err != nil {
 		t.Logger.Error("TTS request failed", "err", err)
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -47,61 +47,35 @@ func (t TikTokTTSGenerator) GenerateTTS(input, voice string) (string, error) {
 		body, _ := io.ReadAll(resp.Body)
 		err := fmt.Errorf("tts api returned status %d: %s", resp.StatusCode, string(body))
 		t.Logger.Error("TTS API non-2xx", "status", resp.StatusCode, "err", err)
-		return "", err
+		return nil, err
 	}
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Logger.Error("failed reading TTS response body", "err", err)
-		return "", err
+		return nil, err
 	}
 
 	tt := ttsResponse{}
 	err = json.Unmarshal(b, &tt)
 	if err != nil {
 		t.Logger.Error("failed to unmarshal TTS response", "err", err)
-		return "", err
+		return nil, err
 	}
 
 	if tt.StatusCode != 0 && strings.ToLower(tt.StatusMsg) != "success" && tt.Data.VStr == "" {
 		err := fmt.Errorf("tts api error: code %d message %s", tt.StatusCode, tt.StatusMsg)
 		t.Logger.Error("TTS API reported error", "api_message", tt.Message, "err", err)
-		return "", err
+		return nil, err
 	}
 
 	data, err := base64.StdEncoding.DecodeString(tt.Data.VStr)
 	if err != nil {
 		t.Logger.Error("failed to decode base64 audio data", "err", err)
-		return "", err
+		return nil, err
 	}
 
-	// Use new cache structure - tiktok maps to marcus provider
-	provider := "marcus"
-	hash := generateHash(input)
-	out := getCachePath(provider, voice, input)
-
-	// Ensure directory exists
-	if err := ensureCacheDirectory(provider, voice); err != nil {
-		t.Logger.Error("failed to create cache directory", "err", err)
-		return "", err
-	}
-
-	// Write audio file
-	err = os.WriteFile(out, data, 0644)
-	if err != nil {
-		t.Logger.Error("failed writing TTS file", "file", out, "err", err)
-		return "", err
-	}
-
-	t.Logger.Info("downloaded TTS file", "file", out, "bytes", len(data), "hash", hash)
-
-	// Update metadata
-	if err := updateMetadata(provider, voice, hash, input, int64(len(data)), t.Logger); err != nil {
-		t.Logger.Warn("failed to update metadata", "err", err)
-		// Don't fail the whole operation if metadata update fails
-	}
-
-	return out, nil
+	return data, nil
 }
 
 var SupportedTikTokVoices = map[string]string{

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"marcus/pkg/util"
 	"net/http"
 	"strings"
 )
@@ -11,14 +12,14 @@ import (
 func (c *Command) SayJoke() {
 	resp, err := http.Get("https://v2.jokeapi.dev/joke/Miscellaneous,Dark?blacklistFlags=nsfw,religious,political,racist,sexist,explicit&type=single")
 	if err != nil {
-		_, err = c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("the joke API returned an unexpected error: %v", err))
+		_, err = util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("the joke API returned an unexpected error: %v", err))
 		return
 	}
 
 	b, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		_, err = c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("the joke API returned an unexpected response: %v", err))
+		_, err = util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("the joke API returned an unexpected response: %v", err))
 		return
 	}
 
@@ -26,7 +27,7 @@ func (c *Command) SayJoke() {
 
 	err = json.Unmarshal(b, &j)
 	if err != nil {
-		_, err = c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("the joke API returned an unexpected response: %v", err))
+		_, err = util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("the joke API returned an unexpected response: %v", err))
 		return
 	}
 
@@ -36,8 +37,8 @@ func (c *Command) SayJoke() {
 	}
 
 	joke := fmt.Sprintf("%s %s", intro, strings.ReplaceAll(j.Joke, "\n", " "))
-	go c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", joke))
-	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, joke, c.TTSOpts.ChannelName)
+	go util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", joke))
+	c.TTS.GenerateAndPlay(c.MessageEvent, joke, c.TTSOpts.ChannelName)
 }
 
 type Joke struct {

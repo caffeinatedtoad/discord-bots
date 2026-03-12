@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"marcus/pkg/util"
 	"net/http"
 )
 
 func (c *Command) SayInsult() {
 	resp, err := http.Get("https://evilinsult.com/generate_insult.php?lang=en&type=json")
 	if err != nil {
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("The insult API returned an error: %v", err))
+		_, err := util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("The insult API returned an error: %v", err))
 		if err != nil {
 			log.Println(fmt.Sprintf("ERR: %v", err))
 		}
@@ -21,7 +22,7 @@ func (c *Command) SayInsult() {
 	rb := InsultResponse{}
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("The insult API returned an unexpected response: %v", err))
+		_, err := util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("The insult API returned an unexpected response: %v", err))
 		if err != nil {
 			log.Println(fmt.Sprintf("ERR: %v", err))
 		}
@@ -31,15 +32,15 @@ func (c *Command) SayInsult() {
 
 	err = json.Unmarshal(b, &rb)
 	if err != nil {
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("The insult API returned an unexpected response: %v", err))
+		_, err := util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("The insult API returned an unexpected response: %v", err))
 		if err != nil {
 			log.Println(fmt.Sprintf("ERR: %v", err))
 		}
 		return
 	}
 
-	go c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", rb.Insult))
-	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, rb.Insult, c.TTSOpts.ChannelName)
+	go util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", rb.Insult))
+	c.TTS.GenerateAndPlay(c.MessageEvent, rb.Insult, c.TTSOpts.ChannelName)
 }
 
 // getting insults from https://evilinsult.com/generate_insult.php?lang=en&type=json

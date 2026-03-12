@@ -3,6 +3,7 @@ package tts
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 )
 
@@ -14,17 +15,22 @@ func (c CacheTTSGenerator) Name() string {
 	return "marcus"
 }
 
-func (c CacheTTSGenerator) GenerateTTS(input, voice string) (string, error) {
+func (c CacheTTSGenerator) GenerateTTS(input, voice string) ([]byte, error) {
 	// Use new cache lookup with fallback to legacy
 	provider := "marcus"
 	fileName := getFileNameWithFallback(provider, voice, input, c.Logger)
 
 	if !fileIsCached(fileName) {
-		return "", fmt.Errorf("cached file not found for voice '%s'", voice)
+		return nil, fmt.Errorf("cached file not found for voice '%s'", voice)
+	}
+
+	audio, err := os.ReadFile(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cached TTS file: %v", err)
 	}
 
 	c.Logger.Info("found cached TTS file", "file", fileName, "voice", voice)
-	return fileName, nil
+	return audio, nil
 }
 
 func (c CacheTTSGenerator) SupportsVoice(voice string) bool {

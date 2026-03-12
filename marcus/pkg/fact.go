@@ -4,19 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"marcus/pkg/util"
 	"net/http"
 )
 
 func (c *Command) SayFact() {
 	resp, err := http.Get("https://uselessfacts.jsph.pl/api/v2/facts/random")
 	if err != nil {
-		_, err = c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("the fact API returned an unexpected error: %v", err))
+		_, err = util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("the fact API returned an unexpected error: %v", err))
 		return
 	}
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		_, err = c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("failed to read fact response: %v", err))
+		_, err = util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to read fact response: %v", err))
 		return
 	}
 
@@ -25,12 +26,12 @@ func (c *Command) SayFact() {
 	fact := FactResponse{}
 	err = json.Unmarshal(b, &fact)
 	if err != nil {
-		_, err = c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("failed to unmarshal fact response: %v", err))
+		_, err = util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("failed to unmarshal fact response: %v", err))
 		return
 	}
 
-	go c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", fact.Text))
-	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, fact.Text, c.TTSOpts.ChannelName)
+	go util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", fact.Text))
+	c.TTS.GenerateAndPlay(c.MessageEvent, fact.Text, c.TTSOpts.ChannelName)
 }
 
 // getting free facts from https://uselessfacts.jsph.pl/api/v2/facts/random

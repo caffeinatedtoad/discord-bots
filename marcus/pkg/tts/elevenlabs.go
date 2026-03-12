@@ -18,10 +18,14 @@ type ElevenLabsTTSGenerator struct {
 }
 
 func NewElevenLabsTTSGenerator(logger *slog.Logger) (ElevenLabsTTSGenerator, error) {
+	voiceRefresher.Lock()
 	gen := ElevenLabsTTSGenerator{Logger: logger}
-	if time.Now().Before(voiceRefresher.LastChecked.Add(time.Minute * 10)) {
+	if time.Now().Before(voiceRefresher.LastChecked.Add(time.Minute*10)) && len(voiceRefresher.SupportedElevenLabsVoices) != 0 {
+		voiceRefresher.Unlock()
 		return gen, nil
 	}
+	voiceRefresher.Unlock()
+
 	slog.Info("refreshing ElevenLabs voice list", "last_checked", voiceRefresher.LastChecked.Format(time.RFC3339))
 	_, err := gen.ListSupportedVoices()
 	if err != nil {
@@ -35,27 +39,30 @@ func (e ElevenLabsTTSGenerator) Name() string {
 }
 
 type SupportedVoicesRefresher struct {
-	SupportedElevenLabsVoices sync.Map
+	sync.Mutex
+	SupportedElevenLabsVoices map[string]Voice
 	LastChecked               time.Time
 }
 
 var voiceRefresher = SupportedVoicesRefresher{
-	SupportedElevenLabsVoices: sync.Map{},
+	Mutex:                     sync.Mutex{},
+	SupportedElevenLabsVoices: map[string]Voice{},
 	LastChecked:               time.Now(),
 }
 
-func (e ElevenLabsTTSGenerator) GenerateTTS(input, voice string) (string, error) {
+func (e ElevenLabsTTSGenerator) GenerateTTS(input, voice string) ([]byte, error) {
 	if voice == "" {
-		return "", fmt.Errorf("must provide a voice, use !voices to list supported voices")
+		return nil, fmt.Errorf("must provide a voice, use !voices to list supported voices")
 	}
 
 	e.Logger.Info("requesting ElevenLabs TTS generation", "voice", voice)
 
-	voiceEntryAny, ok := voiceRefresher.SupportedElevenLabsVoices.Load(voice)
+	voiceRefresher.Lock()
+	voiceEntry, ok := voiceRefresher.SupportedElevenLabsVoices[voice]
 	if !ok {
-		return "", fmt.Errorf("unsupported voice: %s", voice)
+		return nil, fmt.Errorf("unsupported voice: %s", voice)
 	}
-	voiceEntry := voiceEntryAny.(Voice)
+	voiceRefresher.Unlock()
 
 	req, err := e.newElevenLabsRequest("https://api.elevenlabs.io/v1/text-to-dialogue", map[string]interface{}{
 		"inputs": []map[string]interface{}{
@@ -66,11 +73,14 @@ func (e ElevenLabsTTSGenerator) GenerateTTS(input, voice string) (string, error)
 		},
 		"model_id": "eleven_v3",
 		"settings": map[string]interface{}{
-			"stability": 0.5,
+			// determines emotional range,
+			// the closer 0 zero the more erratic,
+			// the closer 1 the more monotone
+			"stability": 0.2,
 		},
 	}, http.MethodPost)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	req.Header.Set("Accept", "audio/mpeg")
@@ -79,7 +89,7 @@ func (e ElevenLabsTTSGenerator) GenerateTTS(input, voice string) (string, error)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		e.Logger.Error("ElevenLabs TTS request failed", "err", err)
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -87,44 +97,25 @@ func (e ElevenLabsTTSGenerator) GenerateTTS(input, voice string) (string, error)
 		body, _ := io.ReadAll(resp.Body)
 		err := fmt.Errorf("elevenlabs api returned status %d: %s", resp.StatusCode, string(body))
 		e.Logger.Error("ElevenLabs API non-2xx", "status", resp.StatusCode, "err", err)
-		return "", err
+		return nil, err
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		e.Logger.Error("failed reading ElevenLabs response body", "err", err)
-		return "", err
+		return nil, err
 	}
 
-	hash := generateHash(input)
-	out := getCachePath(e.Name(), voice, input)
+	e.Logger.Info("ElevenLabs TTS request successful")
 
-	// Ensure directory exists
-	if err := ensureCacheDirectory(e.Name(), voice); err != nil {
-		e.Logger.Error("failed to create cache directory", "err", err)
-		return "", err
-	}
-
-	// Write audio file
-	err = os.WriteFile(out, data, 0644)
-	if err != nil {
-		e.Logger.Error("failed writing ElevenLabs TTS file", "file", out, "err", err)
-		return "", err
-	}
-
-	e.Logger.Info("downloaded ElevenLabs TTS file", "file", out, "bytes", len(data), "hash", hash)
-
-	// Update metadata
-	if err := updateMetadata(e.Name(), voice, hash, input, int64(len(data)), e.Logger); err != nil {
-		e.Logger.Warn("failed to update metadata", "err", err)
-		// Don't fail the whole operation if metadata update fails
-	}
-
-	return out, nil
+	return data, nil
 }
 
 func (e ElevenLabsTTSGenerator) SupportsVoice(voice string) bool {
-	_, ok := voiceRefresher.SupportedElevenLabsVoices.Load(voice)
+	voiceRefresher.Lock()
+	defer voiceRefresher.Unlock()
+
+	_, ok := voiceRefresher.SupportedElevenLabsVoices[voice]
 	return ok
 }
 
@@ -158,6 +149,9 @@ func (e ElevenLabsTTSGenerator) ListSupportedVoices() ([]string, error) {
 	voiceRefresher.LastChecked = time.Now()
 	var names []string
 	slog.Info("found ElevenLabs voices", "count", len(list.Voices))
+
+	voiceRefresher.Lock()
+	defer voiceRefresher.Unlock()
 	for _, voice := range list.Voices {
 		names = append(names, voice.Name)
 		simpleVoice, _, found := strings.Cut(voice.Name, " ")
@@ -165,7 +159,7 @@ func (e ElevenLabsTTSGenerator) ListSupportedVoices() ([]string, error) {
 			slog.Info("failed to parse voice name", "voice", voice.Name, "err", "no space in voice name, skipping voice")
 			continue
 		}
-		voiceRefresher.SupportedElevenLabsVoices.Store(strings.ToLower(simpleVoice), voice)
+		voiceRefresher.SupportedElevenLabsVoices[strings.ToLower(simpleVoice)] = voice
 	}
 
 	return names, nil

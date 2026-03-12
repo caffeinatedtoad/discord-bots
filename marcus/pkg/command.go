@@ -2,13 +2,12 @@ package pkg
 
 import (
 	"fmt"
-	"log"
 	"log/slog"
 	"marcus/pkg/tts"
 	"marcus/pkg/util"
 	"strings"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/events"
 )
 
 type Command struct {
@@ -19,8 +18,7 @@ type Command struct {
 
 	TTSOpts tts.Opts
 
-	Session      *discordgo.Session
-	MessageEvent *discordgo.MessageCreate
+	MessageEvent *events.MessageCreate
 
 	err               error
 	ignore            bool
@@ -32,7 +30,7 @@ type Command struct {
 }
 
 func (c *Command) Build() *Command {
-	voice, cmd, channel, content, isTTS, err := c.ExtractCommandParts(c.MessageEvent.Content)
+	voice, cmd, channel, content, isTTS, err := c.ExtractCommandParts(c.MessageEvent.Message.Content)
 	if err != nil {
 		c.Logger.Error(fmt.Sprintf("failed to extract command parts: %v", err))
 		c.err = err
@@ -47,7 +45,7 @@ func (c *Command) Build() *Command {
 	}
 
 	if c.TTS == nil {
-		c.TTS, _ = tts.NewTTS(c.Logger.With("component", "tts"))
+		c.TTS, _ = tts.NewTTS(c.Logger.With("component", "tts"), c.VoiceManager)
 	}
 
 	c.Logger = c.Logger.With(
@@ -111,13 +109,13 @@ func (c *Command) Build() *Command {
 			// Unknown subcommand, treat as plain TTS if content provided
 			if strings.TrimSpace(content) == "" {
 				c.action = func() {
-					util.SendMessageWithError(c.Session, c.MessageEvent, "Unknown subcommand. Try 'v!voices' or provide a message.", "invalid subcommand")
+					util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, "Unknown subcommand. Try 'v!voices' or provide a message.", "invalid subcommand")
 				}
 				c.usableOutsideOfVC = true
 				return c
 			}
 			c.action = func() {
-				c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, content, channel)
+				c.TTS.GenerateAndPlay(c.MessageEvent, content, channel)
 			}
 			return c
 		}
@@ -141,7 +139,7 @@ func (c *Command) Build() *Command {
 		switch c.SubcommandString {
 		case "memes":
 			c.action = func() {
-				util.SendMessageWithError(c.Session, c.MessageEvent, c.MemeSet.ListMemes(), "failed list memes")
+				util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, c.MemeSet.ListMemes(), "failed list memes")
 			}
 			c.usableOutsideOfVC = true
 			return c
@@ -158,7 +156,7 @@ func (c *Command) Build() *Command {
 	if found {
 		c.Logger.Info("found meme for ", cmd, "")
 		c.action = func() {
-			c.TTS.SpeakFile(c.Session, c.MessageEvent, meme, channel)
+			c.TTS.SpeakFile(c.MessageEvent, meme, channel)
 		}
 		return c
 	} else {
@@ -182,9 +180,9 @@ func (c *Command) Execute() error {
 
 	c.Logger = c.Logger.With("func", funcName)
 
-	_, userInVC := util.GetUserVoiceChannel(c.Session, c.MessageEvent.Author.ID)
+	_, userInVC := util.GetUserVoiceChannel(c.MessageEvent, c.MessageEvent.Message.Author.ID)
 	if !c.usableOutsideOfVC && !userInVC {
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, "You must be in a voice channel to use this command.")
+		_, err := util.SendMessageInChannel(c.MessageEvent, c.MessageEvent.ChannelID, "You must be in a voice channel to use this command.")
 		if err != nil {
 			c.Logger.Error(fmt.Sprintf("encountered error sending message: %v", err))
 		}
@@ -234,7 +232,7 @@ func (c *Command) ListVoices() {
 		names[gen.Name()] = voices
 	}
 	if len(names) == 0 {
-		util.SendMessageWithError(c.Session, c.MessageEvent, "No voices are currently configured.", "list voices")
+		util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, "No voices are currently configured.", "list voices")
 		return
 	}
 
@@ -250,42 +248,5 @@ func (c *Command) ListVoices() {
 
 	b.WriteString("\na few examples: \nv!liam [laughing] I know jor jor well!\nv!alice [energetic] it's all about the mets baby!\nv!sarah [questioning] surely one more game won't be incredibly tilting, right?\nv!liam-insult\nv!alice-joke\n")
 
-	util.SendMessageWithError(c.Session, c.MessageEvent, fmt.Sprintf("```\n%s\n```", b.String()), "failed to list voices")
-}
-
-func (c *Command) SayCachedFiles() {
-	cached := util.GetCachedFiles()
-
-	b := strings.Builder{}
-	var parts []string
-	b.WriteString("```\n")
-	for _, file := range cached {
-		b.WriteString(fmt.Sprintf("%s\n", file))
-		if len(b.String()) >= 200 {
-			// write b and continue to build the next page
-			b.WriteString("```\n")
-			parts = append(parts, b.String())
-			b.Reset()
-			b.WriteString("```\n")
-		}
-	}
-	b.WriteString("```\n")
-
-	parts = append(parts, b.String())
-	if len(parts) == 1 {
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, b.String())
-		if err != nil {
-			log.Println(fmt.Sprintf("ERR: %v", err))
-		}
-		return
-	}
-
-	for i, part := range parts {
-		part = fmt.Sprintf("Page %d\n%s", i, part)
-		_, err := c.Session.ChannelMessageSend(c.MessageEvent.ChannelID, part)
-		if err != nil {
-			log.Println(fmt.Sprintf("ERR: %v", err))
-			return
-		}
-	}
+	util.SendMessageWithError(c.MessageEvent, c.MessageEvent.ChannelID, fmt.Sprintf("```\n%s\n```", b.String()), "failed to list voices")
 }

@@ -1,42 +1,16 @@
 package util
 
 import (
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/snowflake/v2"
 
 	"fmt"
-	"io/fs"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 )
-
-func GetCachedFiles() []string {
-	var phrases []string
-	dir := "."
-	if os.Getenv("AUDIO_DIR") != "" {
-		dir = os.Getenv("AUDIO_DIR")
-	}
-
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-
-		if strings.Contains(info.Name(), ".wav") {
-			phrase := strings.TrimSuffix(info.Name(), ".wav")
-			phrase = strings.ReplaceAll(phrase, "_", " ")
-			phrase = strings.TrimPrefix(phrase, " ")
-			phrases = append(phrases, phrase)
-		}
-		return nil
-	})
-
-	return phrases
-}
 
 func GetRandomEmbedTitle() string {
 	options := []string{
@@ -62,51 +36,46 @@ func GetFunctionName(i interface{}) string {
 	return funcPointer.Name()
 }
 
-// TODO: This is really just handling the case where the message length is too long - need a new function to do proper logging
-
-func SendMessageWithError(s *discordgo.Session, m *discordgo.MessageCreate, content, errorMessage string) {
-	_, err := s.ChannelMessageSend(m.ChannelID, content)
+func SendMessageWithError(e *events.MessageCreate, channelId snowflake.ID, content, errorMessage string) {
+	_, err := SendMessageInChannel(e, channelId, content)
 	if err != nil {
-		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s: %v", errorMessage, err))
+		_, _ = SendMessageInChannel(e, channelId, fmt.Sprintf("%s: %v", errorMessage, err))
 		return
 	}
 }
 
-func EditMessageWithError(s *discordgo.Session, m *discordgo.MessageCreate, msgId, content, errorMessage string) {
-	_, err := s.ChannelMessageEdit(m.ChannelID, msgId, content)
+func EditMessageWithError(e *events.MessageCreate, msgId snowflake.ID, content, errorMessage string) (*discord.Message, error) {
+	msg, err := e.Client().Rest.UpdateMessage(e.ChannelID, msgId, discord.NewMessageUpdate().WithContent(content))
 	if err != nil {
-		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s: %v", errorMessage, err))
-		return
+		_, _ = SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("%s: %v", errorMessage, err))
+		return nil, err
 	}
+	return msg, err
 }
 
-func MessageInChannel(s *discordgo.Session, m *discordgo.MessageCreate, channelName string) bool {
-	guild, err := s.Guild(m.GuildID)
-	if err != nil {
-		return true
-	}
+func SendMessageInChannel(e *events.MessageCreate, channelId snowflake.ID, content string) (*discord.Message, error) {
+	return e.Client().Rest.CreateMessage(channelId, discord.NewMessageCreate().WithContent(content))
 
-	cc, err := s.GuildChannels(guild.ID)
+}
+
+func MessageInChannel(e *events.MessageCreate, channelName string) bool {
+	cc, err := e.Client().Rest.GetGuildChannels(*e.GuildID)
 	if err != nil {
 		return true
 	}
 
 	for _, c := range cc {
-		if strings.ToLower(c.Name) == channelName && c.Type == discordgo.ChannelTypeGuildText {
-			return m.ChannelID == c.ID
+		if strings.ToLower(c.Name()) == channelName && c.Type() == discord.ChannelTypeGuildText {
+			return e.ChannelID == c.ID()
 		}
 	}
-
 	return false
 }
 
-func GetUserVoiceChannel(s *discordgo.Session, userID string) (string, bool) {
-	for _, guild := range s.State.Guilds {
-		for _, vs := range guild.VoiceStates {
-			if vs.UserID == userID {
-				return vs.ChannelID, true
-			}
-		}
+func GetUserVoiceChannel(e *events.MessageCreate, userID snowflake.ID) (*snowflake.ID, bool) {
+	vs, err := e.Client().Rest.GetUserVoiceState(*e.GuildID, userID)
+	if err != nil {
+		return nil, false
 	}
-	return "", false
+	return vs.ChannelID, true
 }

@@ -1,11 +1,16 @@
 package tts
 
 import (
+	"bytes"
+	"context"
+	"io"
 	"marcus/pkg/util"
 	"math/rand"
 
-	"github.com/bwmarrin/dgvoice"
-	"github.com/bwmarrin/discordgo"
+	"github.com/caffeinatedtoad/dca"
+	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/disgo/voice"
+	"github.com/disgoorg/snowflake/v2"
 
 	"fmt"
 	"log/slog"
@@ -24,14 +29,15 @@ type Opts struct {
 }
 
 type TTS struct {
-	Logger     *slog.Logger
-	Generators []Generator
-	Voice      string // provider-specific voice id (e.g., TikTok text_speaker)
+	VoiceManager voice.Manager
+	Logger       *slog.Logger
+	Generators   []Generator
+	Voice        string
 }
 
 type Generator interface {
 	Name() string
-	GenerateTTS(input, voice string) (string, error)
+	GenerateTTS(input, voice string) ([]byte, error)
 	SupportsVoice(voice string) bool
 	ListSupportedVoices() ([]string, error)
 }
@@ -49,13 +55,14 @@ var (
 	}
 )
 
-func NewTTS(logger *slog.Logger) (*TTS, error) {
+func NewTTS(logger *slog.Logger, manager voice.Manager) (*TTS, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	tts := &TTS{
-		Logger: logger,
+		VoiceManager: manager,
+		Logger:       logger,
 		Generators: []Generator{
 			// TODO: Use tiktok Api again at some point
 			//TikTokTTSGenerator{
@@ -77,6 +84,36 @@ func NewTTS(logger *slog.Logger) (*TTS, error) {
 	}
 
 	return tts, nil
+}
+
+func (t *TTS) CacheAudio(generatorName, provider, voice, content string, data []byte) {
+	hash := generateHash(content)
+	fileName := getCachePath(provider, voice, content)
+
+	// don't use the data slice directly,
+	// it's unsafe.
+	var cacheData []byte
+	copy(cacheData, data)
+
+	// Ensure directory exists
+	if err := ensureCacheDirectory(getProviderFromGeneratorName(generatorName), voice); err != nil {
+		t.Logger.Error("failed to create cache directory", "err", err)
+		return
+	}
+
+	// Write audio file
+	err := os.WriteFile(fileName, cacheData, 0644)
+	if err != nil {
+		t.Logger.Error("failed writing ElevenLabs TTS file", "file", fileName, "err", err)
+		return
+	}
+
+	t.Logger.Info("downloaded ElevenLabs TTS file", "file", fileName, "bytes", len(cacheData), "hash", hash)
+
+	// Update metadata
+	if err := updateMetadata(getProviderFromGeneratorName(getProviderFromGeneratorName(generatorName)), voice, hash, content, int64(len(cacheData)), t.Logger); err != nil {
+		t.Logger.Warn("failed to update metadata", "err", err)
+	}
 }
 
 func (t *TTS) InputIsCached(input string) (string, bool) {
@@ -121,18 +158,18 @@ func (t *TTS) GetGeneratorForVoice(voice string) (Generator, error) {
 	return nil, fmt.Errorf("no generator found for voice: %s", voice)
 }
 
-func (t *TTS) GenerateAndPlay(s *discordgo.Session, m *discordgo.MessageCreate, content, targetChannel string) {
+func (t *TTS) GenerateAndPlay(e *events.MessageCreate, content, targetChannel string) {
 	if len(content) >= 1000 {
-		s.ChannelMessageSend(m.ChannelID, TooLongMessages[rand.Intn(len(TooLongMessages))])
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, TooLongMessages[rand.Intn(len(TooLongMessages))])
 		return
 	}
 
-	var channelID string
+	var channelID *snowflake.ID
 	var err error
 	if targetChannel != "" {
-		channelID, err = t.getVoiceChannelByName(s, m, targetChannel)
+		channelID, err = t.getVoiceChannelByName(e, targetChannel)
 		if err != nil {
-			_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to find voice channel with name '%s': %v", targetChannel, err))
+			_, err = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to find voice channel with name '%s': %v", targetChannel, err))
 			t.Logger.Error("voice channel lookup failed", "targetChannel", targetChannel, "err", err)
 			return
 		}
@@ -146,7 +183,7 @@ func (t *TTS) GenerateAndPlay(s *discordgo.Session, m *discordgo.MessageCreate, 
 	// Get generator for the voice
 	generator, err := t.GetGeneratorForVoice(voice)
 	if err != nil {
-		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to find TTS generator for voice '%s': %v", voice, err))
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to find TTS generator for voice '%s': %v", voice, err))
 		t.Logger.Error("failed to find TTS generator", "voice", voice, "err", err)
 		return
 	}
@@ -154,93 +191,170 @@ func (t *TTS) GenerateAndPlay(s *discordgo.Session, m *discordgo.MessageCreate, 
 	// Determine provider and check cache with fallback
 	provider := getProviderFromGeneratorName(generator.Name())
 	fileName := getFileNameWithFallback(provider, voice, content, t.Logger)
+	var audio []byte
 
 	if !fileIsCached(fileName) {
 		t.Logger.Info("TTS not cached, generating", "file", fileName, "voice", voice, "provider", provider)
-		fileName, err = generator.GenerateTTS(content, voice)
+		audio, err = generator.GenerateTTS(content, voice)
 		if err != nil {
-			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to generate TTS: %v\n Type !marcus-cache to see all cached files that can be played at any time.", err))
+			_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to generate TTS: %v\n Type !marcus-cache to see all cached files that can be played at any time.", err))
 			t.Logger.Error("failed to generate TTS", "file", fileName, "err", err)
 			return
 		}
+
+		t.CacheAudio(generator.Name(), provider, voice, content, audio)
+
 	} else {
 		t.Logger.Info("using cached TTS", "file", fileName, "voice", voice, "provider", provider)
-	}
-
-	if channelID != "" {
-		t.speakFileInChannel(s, m, fileName, channelID)
-	} else {
-		t.speakFileInUserVoiceChannel(s, m, fileName)
-	}
-}
-
-func (t *TTS) SpeakFile(s *discordgo.Session, m *discordgo.MessageCreate, fileName, targetChannelName string) {
-	_, err := os.Stat(fileName)
-	if err != nil {
-		_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to find file: %v", err))
-		return
-	}
-
-	if targetChannelName != "" {
-		channelID, err := t.getVoiceChannelByName(s, m, targetChannelName)
+		audio, err = os.ReadFile(fileName)
 		if err != nil {
-			_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to find voice channel with name '%s': %v", targetChannelName, err))
+			_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to read cached TTS file: %v", err))
+			t.Logger.Error("failed to read cached TTS file", "file", fileName, "err", err)
 			return
 		}
-		t.speakFileInChannel(s, m, fileName, channelID)
-		return
 	}
-	t.speakFileInUserVoiceChannel(s, m, fileName)
+
+	if channelID != nil {
+		go t.speakInChannel(e, audio, channelID)
+	} else {
+		go t.speakInUserVoiceChannel(e, audio)
+	}
 }
 
-func (t *TTS) speakFileInChannel(s *discordgo.Session, m *discordgo.MessageCreate, fileName, targetVoiceChannelId string) {
-	t.Logger.Info("joining voice channel to play audio", "guild", m.GuildID, "channelID", targetVoiceChannelId, "file", fileName)
-	vc, err := s.ChannelVoiceJoin(m.GuildID, targetVoiceChannelId, false, true)
-	if err != nil {
-		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Failed to connect to the vc: %v", err))
-		t.Logger.Error("voice join failed", "channelID", targetVoiceChannelId, "err", err)
+func (t *TTS) SpeakFile(e *events.MessageCreate, file string, targetChannelName string) {
+	if !fileIsCached(file) {
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("file '%s' not found in cache", file))
 		return
 	}
 
-	time.Sleep(time.Millisecond * 250)
-	dgvoice.PlayAudioFile(vc, fileName, make(chan bool))
-	time.Sleep(time.Second * 1)
-
-	err = vc.Disconnect()
+	audio, err := os.ReadFile(file)
 	if err != nil {
-		t.Logger.Error("failed to disconnect from voice channel", "err", err)
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to read cached TTS file: %v", err))
 		return
 	}
-	t.Logger.Info("disconnected from voice channel", "channelID", targetVoiceChannelId)
+
+	if targetChannelName == "" {
+		go t.speakInUserVoiceChannel(e, audio)
+	}
+
+	channelID, err := t.getVoiceChannelByName(e, targetChannelName)
+	if err != nil {
+		_, err = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to find voice channel with name '%s': %v", targetChannelName, err))
+		return
+	}
+
+	go t.speakInChannel(e, audio, channelID)
 }
 
-func (t *TTS) speakFileInUserVoiceChannel(s *discordgo.Session, m *discordgo.MessageCreate, file string) {
-	targetVoiceChannelId, foundInVC := util.GetUserVoiceChannel(s, m.Author.ID)
+func (t *TTS) Speak(e *events.MessageCreate, audio []byte, targetChannelName string) {
+	if targetChannelName == "" {
+		go t.speakInUserVoiceChannel(e, audio)
+	}
+
+	channelID, err := t.getVoiceChannelByName(e, targetChannelName)
+	if err != nil {
+		_, err = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to find voice channel with name '%s': %v", targetChannelName, err))
+		return
+	}
+
+	go t.speakInChannel(e, audio, channelID)
+}
+
+func (t *TTS) speakInUserVoiceChannel(e *events.MessageCreate, audio []byte) {
+	targetVoiceChannelId, foundInVC := util.GetUserVoiceChannel(e, e.Message.Author.ID)
 	if !foundInVC {
-		_, _ = s.ChannelMessageSend(m.ChannelID, "you need to be in a voice channel to use this command")
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, "you need to be in a voice channel to use this command")
 		return
 	}
-	t.speakFileInChannel(s, m, file, targetVoiceChannelId)
+
+	t.speakInChannel(e, audio, targetVoiceChannelId)
 }
 
-func (t *TTS) getVoiceChannelByName(s *discordgo.Session, m *discordgo.MessageCreate, channelName string) (string, error) {
-	guild, err := s.Guild(m.GuildID)
+func (t *TTS) speakInChannel(e *events.MessageCreate, audio []byte, targetVoiceChannelId *snowflake.ID) {
+	t.Logger.Info("joining voice channel to play audio", "guild", e.GuildID, "channelID", targetVoiceChannelId)
+
+	encodeSession, err := dca.EncodeMem(bytes.NewReader(audio), dca.StdEncodeOptions)
 	if err != nil {
-		return "", err
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to create encoding session: %v", err))
+		return
+	}
+	defer encodeSession.Cleanup()
+
+	t.Logger.Info("Starting to play audio")
+	voiceConn := t.VoiceManager.CreateConn(*e.GuildID)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err = voiceConn.Open(ctx, *targetVoiceChannelId, false, true)
+	if err != nil {
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to join voice channel: %v", err))
+		return
+	}
+	defer voiceConn.Close(ctx)
+
+	err = voiceConn.SetSpeaking(ctx, voice.SpeakingFlagMicrophone)
+	if err != nil {
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to start speaking: %v", err))
+		return
 	}
 
-	cc, err := s.GuildChannels(guild.ID)
+	// drop any incoming audio, this is expected by the discord API.
+	// we auto deafen, so we may not even get anything, but it can't hurt
+	// to do what's expected here.
+	go func() {
+	FakeRead:
+		for {
+			select {
+			case <-ctx.Done():
+				break FakeRead
+			default:
+				// drop any errors,
+				_, err = voiceConn.UDP().ReadPacket()
+				if err != nil {
+					break FakeRead
+				}
+				time.Sleep(time.Millisecond * 20)
+			}
+		}
+	}()
+
+	for {
+		frame, err := encodeSession.OpusFrame()
+		if err != nil {
+			if err == io.EOF {
+				t.Logger.Info("finished playing audio")
+				break
+			}
+			t.Logger.Error("failed to read opus frame", "err", err)
+			break
+		}
+
+		_, err = voiceConn.UDP().Write(frame)
+		if err != nil {
+			t.Logger.Error("failed to write packet", "err", err)
+			break
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Logger.Info("disconnected from voice channel", "channelID", targetVoiceChannelId)
+	time.Sleep(time.Millisecond * 200)
+}
+
+func (t *TTS) getVoiceChannelByName(e *events.MessageCreate, channelName string) (*snowflake.ID, error) {
+	cc, err := e.Client().Rest.GetGuildChannels(*e.GuildID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	for _, c := range cc {
-		if c.Name == channelName && c.Type == discordgo.ChannelTypeGuildVoice {
-			return c.ID, nil
+		if c.Name() == channelName {
+			return new(c.ID()), nil
 		}
 	}
 
-	return "", fmt.Errorf("failed to find channel with the name %s", channelName)
+	return nil, fmt.Errorf("failed to find channel with the name %s", channelName)
 }
 
 func getFileName(input, voice string) string {

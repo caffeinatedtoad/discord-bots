@@ -1,9 +1,12 @@
 package pkg
 
 import (
-	"github.com/bwmarrin/discordgo"
-	"github.com/revrost/go-openrouter"
 	"marcus/pkg/util"
+
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/snowflake/v2"
+	"github.com/revrost/go-openrouter"
 
 	"context"
 	"fmt"
@@ -34,44 +37,50 @@ func (c *Command) AskAIQuestion() {
 	mOps := modelGeneral
 	mOps.prompt = c.TTSOpts.Content
 
-	response, reasoning := askedQuestion(c.Session, c.MessageEvent, mOps)
+	thinkingMsg, response, reasoning := askedQuestion(c.MessageEvent, mOps)
+	if thinkingMsg == nil {
+		return
+	}
 
-	respondToQuestion(c.Session, c.MessageEvent, "The AI Thought: ||```%s```||", response, reasoning)
+	respondToQuestion(c.MessageEvent, thinkingMsg.ID, "The AI Thought: ||```%s```||", response, reasoning)
 
-	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, response, c.TTSOpts.ChannelName)
+	c.TTS.GenerateAndPlay(c.MessageEvent, response, c.TTSOpts.ChannelName)
 }
 
 func (c *Command) AskMarcusQuestion() {
 	mOps := modelMarcus
 	mOps.prompt = c.TTSOpts.Content
 
-	response, reasoning := askedQuestion(c.Session, c.MessageEvent, mOps)
+	thinkingMsg, response, reasoning := askedQuestion(c.MessageEvent, mOps)
+	if thinkingMsg == nil {
+		return
+	}
 
-	respondToQuestion(c.Session, c.MessageEvent, "Marcus Thought: ||```%s```||", response, reasoning)
+	respondToQuestion(c.MessageEvent, thinkingMsg.ID, "Marcus Thought: ||```%s```||", response, reasoning)
 
-	c.TTS.GenerateAndPlay(c.Session, c.MessageEvent, response, c.TTSOpts.ChannelName)
+	c.TTS.GenerateAndPlay(c.MessageEvent, response, c.TTSOpts.ChannelName)
 }
 
-func askedQuestion(s *discordgo.Session, m *discordgo.MessageCreate, mOps modelOpts) (string, string) {
+func askedQuestion(e *events.MessageCreate, mOps modelOpts) (*discord.Message, string, string) {
 	var response, reasoning string
 	var err error
 
-	msg, err := s.ChannelMessageSend(m.ChannelID, "Thinking...")
+	msg, err := util.SendMessageInChannel(e, e.ChannelID, "Thinking...")
 	if err != nil {
-		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to respond to question: %v", err))
-		return "", ""
+		_, _ = util.SendMessageInChannel(e, e.ChannelID, fmt.Sprintf("failed to respond to question: %v", err))
+		return nil, "", ""
 	}
 
-	stopThinking := startThinking(s, m, msg.ID)
+	stopThinking := startThinking(e, msg.ID)
 	response, reasoning, err = openRouterRequest(mOps)
 
 	stopThinking <- struct{}{}
 	close(stopThinking)
 
-	return response, reasoning
+	return msg, response, reasoning
 }
 
-func startThinking(s *discordgo.Session, m *discordgo.MessageCreate, msgId string) chan struct{} {
+func startThinking(e *events.MessageCreate, msgId snowflake.ID) chan struct{} {
 	stopThinking := make(chan struct{})
 
 	go func(stop chan struct{}) {
@@ -91,9 +100,8 @@ func startThinking(s *discordgo.Session, m *discordgo.MessageCreate, msgId strin
 				dotBuf.WriteString(".")
 			}
 			time.Sleep(time.Second * 3)
-			_, err := s.ChannelMessageEdit(m.ChannelID, msgId, dotBuf.String())
+			_, err := util.EditMessageWithError(e, msgId, dotBuf.String(), "failed to respond to question")
 			if err != nil {
-				_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("failed to respond to question: %v", err))
 				return
 			}
 		}
@@ -102,21 +110,21 @@ func startThinking(s *discordgo.Session, m *discordgo.MessageCreate, msgId strin
 	return stopThinking
 }
 
-func respondToQuestion(s *discordgo.Session, m *discordgo.MessageCreate, reasoningHeader, response, reasoning string) {
+func respondToQuestion(e *events.MessageCreate, thinkingMsgId snowflake.ID, reasoningHeader, response, reasoning string) {
 	if reasoning == "" {
-		util.EditMessageWithError(s, m, m.ID, response, "failed to respond to question")
+		util.EditMessageWithError(e, thinkingMsgId, response, "failed to respond to question")
 		return
 	}
 
 	fullReasoning := fmt.Sprintf(reasoningHeader, reasoning)
 
 	if len(fullReasoning) >= 2000 {
-		util.EditMessageWithError(s, m, m.ID, "We thought so hard we can't even show it in chat...", "failed to provide reasoning")
+		util.EditMessageWithError(e, thinkingMsgId, "We thought so hard we can't even show it in chat...", "failed to provide reasoning")
 	} else {
-		util.EditMessageWithError(s, m, m.ID, fullReasoning, "failed to provide reasoning")
+		util.EditMessageWithError(e, thinkingMsgId, fullReasoning, "failed to provide reasoning")
 	}
 
-	util.SendMessageWithError(s, m, response, "failed to respond to question")
+	util.SendMessageWithError(e, e.ChannelID, response, "failed to respond to question")
 }
 
 func openRouterRequest(opts modelOpts) (string, string, error) {
