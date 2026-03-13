@@ -76,7 +76,7 @@ func (e ElevenLabsTTSGenerator) GenerateTTS(input, voice string) ([]byte, error)
 			// determines emotional range,
 			// the closer 0 zero the more erratic,
 			// the closer 1 the more monotone
-			"stability": 0.2,
+			"stability": 0.01,
 		},
 	}, http.MethodPost)
 	if err != nil {
